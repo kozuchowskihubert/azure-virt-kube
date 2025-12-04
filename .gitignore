@@ -1,0 +1,86 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+tfplan
+crash.log
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+
+# Secrets - CRITICAL: Never commit these!
+secrets/
+*.pem
+*.key
+*.crt
+azure-secrets.env
+github-secrets.txt
+*.secret
+credentials/
+
+# Documentation files (excluded per user request)
+*.md
+!README.md
+
+# Deployment logs
+deployment.log
+build.log

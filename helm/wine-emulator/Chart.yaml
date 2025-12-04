@@ -1,0 +1,15 @@
+apiVersion: v2
+name: wine-emulator
+description: A Helm chart for Wine x86-to-x64 translation emulator web application
+type: application
+version: 1.0.0
+appVersion: "8.0"
+keywords:
+  - wine
+  - emulator
+  - x86
+  - x64
+  - translation
+maintainers:
+  - name: Wine Emulator Team
+    email: team@example.com

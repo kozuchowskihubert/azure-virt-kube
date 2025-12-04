@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wine-emulator-arm
+  namespace: wine-emulator
+  labels:
+    app: wine-emulator-arm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wine-emulator-arm
+  template:
+    metadata:
+      labels:
+        app: wine-emulator-arm
+    spec:
+      containers:
+      - name: wine-emulator
+        image: wine-emulator-arm64:latest
+        imagePullPolicy: Never  # Use local image
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 5900
+          name: vnc
+        env:
+        - name: WINEARCH
+          value: "win64"
+        - name: DISPLAY
+          value: ":0"
+        - name: BOX86_NOBANNER
+          value: "1"
+        - name: BOX64_NOBANNER
+          value: "1"
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: wine-storage
+          mountPath: /root/.wine
+        - name: config
+          mountPath: /etc/wine
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: wine-storage
+        persistentVolumeClaim:
+          claimName: wine-emulator-storage
+      - name: config
+        configMap:
+          name: wine-emulator-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wine-emulator-arm
+  namespace: wine-emulator
+spec:
+  type: LoadBalancer
+  selector:
+    app: wine-emulator-arm
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: vnc
+    port: 5900
+    targetPort: 5900
+    protocol: TCP

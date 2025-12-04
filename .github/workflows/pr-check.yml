@@ -1,0 +1,263 @@
+name: 🧪 PR Checks & Tests
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches:
+      - develop
+      - feature/*
+
+jobs:
+  lint-backend:
+    name: 🔍 Lint Backend (Python)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 📦 Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install flake8 black isort mypy
+      
+      - name: 🔍 Run Flake8
+        run: |
+          cd backend
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      
+      - name: 🎨 Check Black formatting
+        run: |
+          cd backend
+          black --check .
+      
+      - name: 📋 Check Import sorting
+        run: |
+          cd backend
+          isort --check-only .
+
+  lint-frontend:
+    name: 🔍 Lint Frontend (TypeScript)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: 📦 Install dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: 🔍 Run ESLint
+        run: |
+          cd frontend
+          npm run lint
+      
+      - name: 🎨 Check TypeScript
+        run: |
+          cd frontend
+          npx tsc --noEmit
+
+  test-backend:
+    name: 🧪 Test Backend
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 📦 Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio httpx
+      
+      - name: 🧪 Run tests with coverage
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+          SECRET_KEY: test-secret-key-for-ci
+        run: |
+          cd backend
+          pytest --cov=. --cov-report=xml --cov-report=term
+      
+      - name: 📊 Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+
+  test-frontend:
+    name: 🧪 Test Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: 📦 Install dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: 🧪 Run tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false
+      
+      - name: 📊 Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./frontend/coverage/coverage-final.json
+          flags: frontend
+          name: frontend-coverage
+
+  build-test:
+    name: 🏗️ Build Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 🏗️ Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: 🏗️ Build Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          tags: frontend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: 🏗️ Build Wine Emulator Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./wine-service
+          file: ./wine-service/Dockerfile.arm64
+          push: false
+          tags: wine-emulator:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔒 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: 📊 Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  pr-summary:
+    name: 📝 PR Summary
+    needs: [lint-backend, lint-frontend, test-backend, test-frontend, build-test, security-scan]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "# 🧪 PR Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ Completed Checks" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Lint | ${{ needs.lint-backend.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Lint | ${{ needs.lint-frontend.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Tests | ${{ needs.test-backend.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Tests | ${{ needs.test-frontend.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Test | ${{ needs.build-test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅ Passed' || '⚠️ Check' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.lint-backend.result }}" == "success" && \
+                "${{ needs.lint-frontend.result }}" == "success" && \
+                "${{ needs.test-backend.result }}" == "success" && \
+                "${{ needs.test-frontend.result }}" == "success" && \
+                "${{ needs.build-test.result }}" == "success" ]]; then
+            echo "## 🎉 All checks passed! Ready to merge." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Some checks failed. Please review." >> $GITHUB_STEP_SUMMARY
+          fi

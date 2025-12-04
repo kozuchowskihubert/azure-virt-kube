@@ -1,0 +1,109 @@
+╔══════════════════════════════════════════════════════════════════╗
+║  🍷 Wine Emulator Platform - Quick Reference Card                ║
+╚══════════════════════════════════════════════════════════════════╝
+
+📍 ACCESS URLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Frontend:        http://localhost:3000
+Backend API:     http://localhost:8000/docs
+Wine VNC:        http://localhost:8080/vnc.html
+PostgreSQL:      localhost:5432 (admin/changeme123)
+Redis:           localhost:6379
+
+🎯 QUICK COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Check status:    docker compose ps
+View logs:       docker compose logs -f
+Stop all:        docker compose down
+Restart:         docker compose restart
+Rebuild:         docker compose up -d --build
+
+🏗️ ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Platform:        ARM64 (Apple Silicon)
+Wine Arch:       win64 (x86 + x64 support)
+Translation:     Box86 + Box64
+Containers:      6 services
+
+✨ FEATURES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ x86 (32-bit) Windows apps
+✅ x64 (64-bit) Windows apps
+✅ Web-based VNC access
+✅ Low-code workflow builder
+✅ RESTful API
+✅ Azure deployment ready
+
+📖 KEY DOCUMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+README.md                    - Complete guide
+FIRST_DEPLOYMENT.md          - Deployment steps
+DEPLOYMENT_COMPLETE.md       - Full summary
+X86_X64_TRANSLATION.md       - Architecture details
+
+🚀 DEPLOYMENT SCRIPTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+./first-deploy.sh            - One-command deploy ⭐
+./build-arm.sh arm64         - Build for ARM64
+./deploy-azure.sh            - Deploy to Azure
+./setup-docker-path.sh       - Fix Docker PATH
+
+☁️ AZURE DEPLOYMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. az login
+2. cd terraform && cp terraform.tfvars.example terraform.tfvars
+3. cd .. && ./deploy-azure.sh
+4. Wait 10-15 minutes
+5. Access via Azure URLs
+
+🔍 HEALTH CHECKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl http://localhost:8000/health         # Backend
+curl http://localhost:3000/api/health     # Frontend
+curl http://localhost:8080/               # Wine VNC
+
+📊 CURRENT STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ PostgreSQL      - Running & Healthy
+✅ Redis           - Running & Healthy
+⏳ Wine Emulator   - Building...
+⏳ Backend API     - Building...
+⏳ Frontend        - Building...
+
+⏱️  Build Time:    10-15 minutes (first run)
+📦 Images:         ~1.5GB total
+
+🎓 GETTING STARTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Wait for build to complete (check: docker compose ps)
+2. Open http://localhost:3000
+3. Go to "Applications" tab
+4. Add your first Windows app
+5. Click "Run" to execute via Wine
+
+🐛 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Build fails:     docker compose down -v && docker compose up --build
+Logs:            docker compose logs -f [service-name]
+Rebuild:         docker compose build --no-cache
+Docker path:     export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
+
+💡 TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• First build takes 10-15 min, subsequent rebuilds only 2-3 min
+• Wine service is largest component (~500MB)
+• Increase Docker memory to 8GB for better performance
+• Use docker compose logs -f to watch progress
+• Save deployment.log for troubleshooting
+
+🎉 SUCCESS CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+□ All containers show "Up" and "healthy"
+□ Frontend loads at localhost:3000
+□ Backend API shows Swagger UI
+□ Wine VNC displays desktop
+□ No errors in docker compose logs
+
+╔══════════════════════════════════════════════════════════════════╗
+║  Status: ✅ CONFIGURED | ⏳ BUILDING | 🚀 READY IN 10 MINUTES   ║
+╚══════════════════════════════════════════════════════════════════╝

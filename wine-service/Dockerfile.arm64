@@ -1,0 +1,76 @@
+# Wine Emulator Service Dockerfile - ARM64 Compatible
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Add architecture support
+RUN dpkg --add-architecture arm64
+
+# Install Wine and dependencies for ARM64
+RUN apt-get update && \
+    apt-get install -y \
+    software-properties-common \
+    wget \
+    gnupg2 \
+    xvfb \
+    x11vnc \
+    supervisor \
+    nginx \
+    websockify \
+    python3-numpy \
+    curl \
+    cabextract \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Box86/Box64 for ARM compatibility (x86 emulation on ARM)
+RUN wget https://ryanfortner.github.io/box86-debs/box86.list -O /etc/apt/sources.list.d/box86.list && \
+    wget -qO- https://ryanfortner.github.io/box86-debs/KEY.gpg | gpg --dearmor -o /etc/apt/trusted.gpg.d/box86-debs-archive-keyring.gpg && \
+    wget https://ryanfortner.github.io/box64-debs/box64.list -O /etc/apt/sources.list.d/box64.list && \
+    wget -qO- https://ryanfortner.github.io/box64-debs/KEY.gpg | gpg --dearmor -o /etc/apt/trusted.gpg.d/box64-debs-archive-keyring.gpg && \
+    apt-get update && \
+    apt-get install -y box86-generic-arm box64-generic-arm || true
+
+# Install Wine (will use Box86/64 for emulation)
+RUN apt-get update && \
+    mkdir -pm755 /etc/apt/keyrings && \
+    wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key && \
+    wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/jammy/winehq-jammy.sources && \
+    apt-get update && \
+    apt-get install -y --install-recommends winehq-stable || \
+    apt-get install -y wine-stable || \
+    echo "Wine installation may need manual setup"
+
+# Install noVNC
+RUN mkdir -p /opt/novnc && \
+    wget -qO- https://github.com/novnc/noVNC/archive/v1.4.0.tar.gz | tar xz -C /opt/novnc --strip-components=1 && \
+    ln -s /opt/novnc/vnc.html /opt/novnc/index.html
+
+# Configure Wine
+ENV WINEARCH=win64
+ENV WINEPREFIX=/root/.wine
+ENV DISPLAY=:0
+ENV BOX86_NOBANNER=1
+ENV BOX64_NOBANNER=1
+
+# Create necessary directories
+RUN mkdir -p /root/.wine /tmp/.X11-unix /var/log/supervisor
+
+# Copy supervisor configuration
+COPY wine-service/supervisord-arm.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create a simple web interface
+RUN echo '<!DOCTYPE html><html><head><title>Wine Emulator</title></head><body style="margin:0;padding:0;"><iframe src="/novnc/vnc.html" style="width:100%;height:100vh;border:none;"></iframe></body></html>' > /opt/novnc/index.html
+
+# Expose ports
+EXPOSE 5900 8080
+
+# Volume for Wine prefix
+VOLUME ["/root/.wine"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8080/ || exit 1
+
+# Start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

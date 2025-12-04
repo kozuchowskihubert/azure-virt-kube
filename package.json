@@ -1,0 +1,38 @@
+{
+  "name": "azure-virt-kube",
+  "version": "1.0.0",
+  "description": "Wine Emulator Platform - x86 to x64 Translation with Low-Code Interface",
+  "scripts": {
+    "dev": "docker-compose up",
+    "dev:build": "docker-compose up --build",
+    "dev:down": "docker-compose down",
+    "dev:clean": "docker-compose down -v",
+    "deploy": "bash deploy.sh",
+    "k8s:apply": "kubectl apply -f k8s/",
+    "k8s:delete": "kubectl delete -f k8s/",
+    "helm:install": "helm install wine-emulator ./helm/wine-emulator --namespace wine-emulator --create-namespace",
+    "helm:upgrade": "helm upgrade wine-emulator ./helm/wine-emulator --namespace wine-emulator",
+    "helm:uninstall": "helm uninstall wine-emulator --namespace wine-emulator",
+    "terraform:init": "cd terraform && terraform init",
+    "terraform:plan": "cd terraform && terraform plan",
+    "terraform:apply": "cd terraform && terraform apply",
+    "terraform:destroy": "cd terraform && terraform destroy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kozuchowskihubert/azure-moto.git"
+  },
+  "keywords": [
+    "wine",
+    "emulator",
+    "x86",
+    "x64",
+    "translation",
+    "low-code",
+    "azure",
+    "kubernetes",
+    "docker"
+  ],
+  "author": "Hubert Kozuchowski",
+  "license": "MIT"
+}

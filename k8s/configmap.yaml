@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wine-emulator-config
+  namespace: wine-emulator
+data:
+  wine.conf: |
+    # Wine Configuration
+    WINEDEBUG=-all
+    WINEARCH=win64
+    DISPLAY=:0
+  
+  # noVNC configuration for web-based access
+  novnc.conf: |
+    WEB_PORT=8080
+    VNC_PORT=5900

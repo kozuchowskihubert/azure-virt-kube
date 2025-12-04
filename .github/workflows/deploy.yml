@@ -1,0 +1,362 @@
+name: 🚀 Deploy to Azure Container Apps
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  REGISTRY: ${{ secrets.ACR_LOGIN_SERVER }}
+  REGISTRY_NAME: ${{ secrets.REGISTRY_NAME }}
+  RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  CONTAINER_ENV: ${{ secrets.CONTAINER_ENV }}
+
+jobs:
+  build-and-push:
+    name: 🏗️ Build & Push Docker Images
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service:
+          - name: wine-emulator
+            context: ./wine-service
+            dockerfile: ./wine-service/Dockerfile.arm64
+            platforms: linux/arm64
+          - name: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            platforms: linux/amd64,linux/arm64
+          - name: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            platforms: linux/amd64,linux/arm64
+          - name: nginx
+            context: ./nginx
+            dockerfile: ./nginx/Dockerfile
+            platforms: linux/amd64,linux/arm64
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔐 Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: 🐳 Login to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+      
+      - name: 📦 Build and push ${{ matrix.service.name }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          platforms: ${{ matrix.service.platforms }}
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service.name }}:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service.name }}:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service.name }}:${{ github.ref_name }}
+          cache-from: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service.name }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service.name }}:buildcache,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            BUILDKIT_INLINE_CACHE=1
+
+  deploy-backend:
+    name: 🚀 Deploy Backend API
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: 📊 Check if Container App exists
+        id: check_app
+        run: |
+          if az containerapp show --name wine-emulator-backend --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} &> /dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🆕 Create Backend Container App
+        if: steps.check_app.outputs.exists == 'false'
+        run: |
+          az containerapp create \
+            --name wine-emulator-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --environment ${{ secrets.CONTAINER_ENV }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/backend:latest \
+            --registry-server ${{ secrets.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.ACR_USERNAME }} \
+            --registry-password ${{ secrets.ACR_PASSWORD }} \
+            --target-port 8000 \
+            --ingress external \
+            --cpu 1.0 \
+            --memory 2.0Gi \
+            --min-replicas 1 \
+            --max-replicas 3 \
+            --env-vars \
+              DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              REDIS_URL="${{ secrets.REDIS_URL }}" \
+              SECRET_KEY="${{ secrets.SECRET_KEY }}" \
+              CORS_ORIGINS="*" \
+              WINE_SERVICE_URL="http://wine-emulator-service:8080"
+      
+      - name: 🔄 Update Backend Container App
+        if: steps.check_app.outputs.exists == 'true'
+        run: |
+          az containerapp update \
+            --name wine-emulator-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/backend:${{ github.sha }} \
+            --set-env-vars \
+              DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              REDIS_URL="${{ secrets.REDIS_URL }}" \
+              SECRET_KEY="${{ secrets.SECRET_KEY }}"
+      
+      - name: 🌐 Get Backend URL
+        id: backend_url
+        run: |
+          BACKEND_FQDN=$(az containerapp show \
+            --name wine-emulator-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          echo "url=https://${BACKEND_FQDN}" >> $GITHUB_OUTPUT
+          echo "Backend URL: https://${BACKEND_FQDN}"
+
+  deploy-frontend:
+    name: 🚀 Deploy Frontend
+    needs: [build-and-push, deploy-backend]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: 📊 Check if Container App exists
+        id: check_app
+        run: |
+          if az containerapp show --name wine-emulator-frontend --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} &> /dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🆕 Create Frontend Container App
+        if: steps.check_app.outputs.exists == 'false'
+        run: |
+          BACKEND_FQDN=$(az containerapp show \
+            --name wine-emulator-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          az containerapp create \
+            --name wine-emulator-frontend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --environment ${{ secrets.CONTAINER_ENV }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest \
+            --registry-server ${{ secrets.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.ACR_USERNAME }} \
+            --registry-password ${{ secrets.ACR_PASSWORD }} \
+            --target-port 3000 \
+            --ingress external \
+            --cpu 0.5 \
+            --memory 1.0Gi \
+            --min-replicas 1 \
+            --max-replicas 3 \
+            --env-vars \
+              NEXT_PUBLIC_API_URL="https://${BACKEND_FQDN}"
+      
+      - name: 🔄 Update Frontend Container App
+        if: steps.check_app.outputs.exists == 'true'
+        run: |
+          BACKEND_FQDN=$(az containerapp show \
+            --name wine-emulator-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          az containerapp update \
+            --name wine-emulator-frontend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }} \
+            --set-env-vars \
+              NEXT_PUBLIC_API_URL="https://${BACKEND_FQDN}"
+      
+      - name: 🌐 Get Frontend URL
+        id: frontend_url
+        run: |
+          FRONTEND_FQDN=$(az containerapp show \
+            --name wine-emulator-frontend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          echo "url=https://${FRONTEND_FQDN}" >> $GITHUB_OUTPUT
+          echo "Frontend URL: https://${FRONTEND_FQDN}"
+
+  deploy-wine-service:
+    name: 🍷 Deploy Wine Emulator Service
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: 📊 Check if Container App exists
+        id: check_app
+        run: |
+          if az containerapp show --name wine-emulator-service --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} &> /dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🆕 Create Wine Service Container App
+        if: steps.check_app.outputs.exists == 'false'
+        run: |
+          az containerapp create \
+            --name wine-emulator-service \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --environment ${{ secrets.CONTAINER_ENV }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/wine-emulator:latest \
+            --registry-server ${{ secrets.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.ACR_USERNAME }} \
+            --registry-password ${{ secrets.ACR_PASSWORD }} \
+            --target-port 8080 \
+            --ingress external \
+            --cpu 2.0 \
+            --memory 4.0Gi \
+            --min-replicas 1 \
+            --max-replicas 2 \
+            --env-vars \
+              DISPLAY=":0" \
+              WINE_VERSION="8.0" \
+              WINEARCH="win64"
+      
+      - name: 🔄 Update Wine Service Container App
+        if: steps.check_app.outputs.exists == 'true'
+        run: |
+          az containerapp update \
+            --name wine-emulator-service \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/wine-emulator:${{ github.sha }}
+
+  health-check:
+    name: 🏥 Health Check
+    needs: [deploy-backend, deploy-frontend, deploy-wine-service]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: 🔍 Get Deployment URLs
+        id: urls
+        run: |
+          BACKEND_FQDN=$(az containerapp show \
+            --name wine-emulator-backend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          FRONTEND_FQDN=$(az containerapp show \
+            --name wine-emulator-frontend \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          WINE_FQDN=$(az containerapp show \
+            --name wine-emulator-service \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          echo "backend=https://${BACKEND_FQDN}" >> $GITHUB_OUTPUT
+          echo "frontend=https://${FRONTEND_FQDN}" >> $GITHUB_OUTPUT
+          echo "wine=https://${WINE_FQDN}" >> $GITHUB_OUTPUT
+      
+      - name: 🧪 Test Backend Health
+        run: |
+          echo "Testing backend at ${{ steps.urls.outputs.backend }}/health"
+          curl -f ${{ steps.urls.outputs.backend }}/health || exit 1
+      
+      - name: 🧪 Test Frontend
+        run: |
+          echo "Testing frontend at ${{ steps.urls.outputs.frontend }}"
+          curl -f ${{ steps.urls.outputs.frontend }} || exit 1
+      
+      - name: 📊 Deployment Summary
+        run: |
+          echo "# 🎉 Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🌐 Application URLs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend**: ${{ steps.urls.outputs.frontend }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend API**: ${{ steps.urls.outputs.backend }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **API Docs**: ${{ steps.urls.outputs.backend }}/docs" >> $GITHUB_STEP_SUMMARY
+          echo "- **Wine Service**: ${{ steps.urls.outputs.wine }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📦 Deployed Images" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: \`${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: \`${{ secrets.ACR_LOGIN_SERVER }}/backend:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Wine Emulator: \`${{ secrets.ACR_LOGIN_SERVER }}/wine-emulator:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🏗️ Architecture" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platform**: ARM64 + x86/x64 Translation" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cloud**: Azure Container Apps" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database**: PostgreSQL Flexible Server" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cache**: Azure Cache for Redis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🍷 **Wine Emulator Platform is live!**" >> $GITHUB_STEP_SUMMARY
+
+  notify:
+    name: 📢 Notify
+    needs: health-check
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📧 Deployment Status
+        run: |
+          if [ "${{ needs.health-check.result }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi

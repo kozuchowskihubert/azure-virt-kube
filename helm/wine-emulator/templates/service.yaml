@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wine-emulator.fullname" . }}
+  labels:
+    {{- include "wine-emulator.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.service.vncPort }}
+      targetPort: vnc
+      protocol: TCP
+      name: vnc
+  selector:
+    {{- include "wine-emulator.selectorLabels" . | nindent 4 }}

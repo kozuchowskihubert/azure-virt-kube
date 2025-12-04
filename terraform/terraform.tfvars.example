@@ -1,0 +1,38 @@
+# Example terraform.tfvars file
+# Copy this to terraform.tfvars and customize for your environment
+
+# Azure Configuration
+location            = "East US"
+resource_group_name = "wine-emulator-rg"
+
+# Application Configuration
+app_name    = "wine-emulator"
+app_version = "1.0.0"
+replicas    = 2
+
+# Container Image
+# Options:
+# - scottyhardy/docker-wine:latest (Wine with GUI)
+# - tobix/wine:latest (Wine staging)
+# - Custom image from your ACR
+container_image = "scottyhardy/docker-wine:latest"
+
+# Kubernetes Configuration
+namespace    = "wine-emulator"
+service_type = "LoadBalancer"
+service_port = 8080
+
+# Storage
+storage_size = "10Gi"
+
+# Azure Storage for Terraform State (optional)
+# state_storage_account_name = "your-storage-account"
+# state_container_name       = "tfstate"
+# state_key                  = "wine-emulator.tfstate"
+
+# Tags
+tags = {
+  Environment = "development"
+  Project     = "wine-emulator"
+  ManagedBy   = "terraform"
+}

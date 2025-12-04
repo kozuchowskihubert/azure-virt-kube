@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wine-emulator
+  labels:
+    name: wine-emulator
+    environment: development

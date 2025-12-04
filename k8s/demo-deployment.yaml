@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wine-emulator-demo
+  namespace: wine-emulator
+  labels:
+    app: wine-emulator-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wine-emulator-demo
+  template:
+    metadata:
+      labels:
+        app: wine-emulator-demo
+    spec:
+      containers:
+      - name: wine-demo
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: DEMO_MODE
+          value: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wine-emulator-demo
+  namespace: wine-emulator
+spec:
+  type: LoadBalancer
+  selector:
+    app: wine-emulator-demo
+  ports:
+  - port: 8080
+    targetPort: 80
+    protocol: TCP
+    name: http

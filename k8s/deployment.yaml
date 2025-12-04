@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wine-emulator
+  namespace: wine-emulator
+  labels:
+    app: wine-emulator
+    version: "1.0.0"
+spec:
+  replicas: 1  # Wine is stateful, so typically run 1 replica per user
+  selector:
+    matchLabels:
+      app: wine-emulator
+  template:
+    metadata:
+      labels:
+        app: wine-emulator
+        version: "1.0.0"
+    spec:
+      containers:
+      - name: wine-emulator
+        # Using a Wine container with web interface
+        # This container includes Wine, X11, VNC, and noVNC for web access
+        image: scottyhardy/docker-wine:latest
+        imagePullPolicy: Always
+        
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 5900
+          name: vnc
+          protocol: TCP
+        
+        env:
+        - name: WINEARCH
+          value: "win64"
+        - name: DISPLAY
+          value: ":0"
+        - name: RUN_AS_ROOT
+          value: "yes"
+        
+        volumeMounts:
+        - name: wine-storage
+          mountPath: /root/.wine
+        - name: config
+          mountPath: /etc/wine
+        
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        
+        # Health checks
+        livenessProbe:
+          tcpSocket:
+            port: 5900
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          tcpSocket:
+            port: 5900
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      volumes:
+      - name: wine-storage
+        persistentVolumeClaim:
+          claimName: wine-emulator-storage
+      - name: config
+        configMap:
+          name: wine-emulator-config
