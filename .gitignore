@@ -81,6 +81,7 @@ credentials/
 *.md
 !README.md
 !GITHUB_SECRETS.md
+!SECRETS_CONFIGURED.md
 
 # Deployment logs
 deployment.log
