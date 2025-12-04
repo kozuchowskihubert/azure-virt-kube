@@ -1,0 +1,274 @@
+name: Azure Container Apps Deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+
+jobs:
+  build-and-push-images:
+    name: Build & Push Docker Images to ACR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    strategy:
+      matrix:
+        include:
+          - service: backend
+            dockerfile: backend/Dockerfile
+            context: ./backend
+            image: backend
+            platform: linux/amd64
+          - service: frontend
+            dockerfile: frontend/Dockerfile
+            context: ./frontend
+            image: frontend
+            platform: linux/amd64
+          - service: wine-service
+            dockerfile: wine-service/Dockerfile
+            context: ./wine-service
+            image: wine-service
+            platform: linux/arm64
+    
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: 🔑 Login to Azure Container Registry
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+
+      - name: 📦 Build and push ${{ matrix.service }} image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.image }}:latest
+            ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.image }}:${{ github.sha }}
+            ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.image }}:v1.0.${{ github.run_number }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.title=wine-emulator-${{ matrix.service }}
+            org.opencontainers.image.description=Wine Emulator Platform - ${{ matrix.service }}
+            service.name=${{ matrix.service }}
+            platform=${{ matrix.platform }}
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=v1.0.${{ github.run_number }}
+          cache-from: type=registry,ref=${{ env.ACR_LOGIN_SERVER }}/${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=${{ env.ACR_LOGIN_SERVER }}/${{ matrix.image }}:buildcache,mode=max
+
+      - name: ✅ Image build summary
+        run: |
+          echo "### 📦 ${{ matrix.service }} Image Built Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ACR_LOGIN_SERVER }}/${{ matrix.image }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA:** \`${{ env.ACR_LOGIN_SERVER }}/${{ matrix.image }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ env.ACR_LOGIN_SERVER }}/${{ matrix.image }}:v1.0.${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** \`${{ matrix.platform }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  deploy-backend:
+    name: Deploy Backend to Azure Container Apps
+    needs: build-and-push-images
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🚀 Deploy Backend Container App
+        run: |
+          az containerapp update \
+            --name wine-emulator-backend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/backend:${{ github.sha }} \
+            --set-env-vars \
+              DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              REDIS_URL="${{ secrets.REDIS_URL }}" \
+              SECRET_KEY="${{ secrets.SECRET_KEY }}" \
+              JWT_SECRET="${{ secrets.JWT_SECRET }}"
+
+      - name: ✅ Backend deployment summary
+        run: |
+          BACKEND_URL=$(az containerapp show \
+            --name wine-emulator-backend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          echo "### ✅ Backend Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://$BACKEND_URL" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ACR_LOGIN_SERVER }}/backend:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  deploy-frontend:
+    name: Deploy Frontend to Azure Container Apps
+    needs: [build-and-push-images, deploy-backend]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🎨 Deploy Frontend Container App
+        run: |
+          BACKEND_URL=$(az containerapp show \
+            --name wine-emulator-backend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          WINE_URL=$(az containerapp show \
+            --name wine-emulator-wine \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv 2>/dev/null || echo "")
+          
+          az containerapp update \
+            --name wine-emulator-frontend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }} \
+            --set-env-vars \
+              NEXT_PUBLIC_API_URL="https://${BACKEND_URL}" \
+              NEXT_PUBLIC_WINE_VNC_URL="https://${WINE_URL}"
+
+      - name: ✅ Frontend deployment summary
+        run: |
+          FRONTEND_URL=$(az containerapp show \
+            --name wine-emulator-frontend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          echo "### ✅ Frontend Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://$FRONTEND_URL" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  deploy-wine-service:
+    name: Deploy Wine Service to Azure Container Apps
+    needs: build-and-push-images
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🍷 Deploy Wine Service Container App
+        run: |
+          az containerapp update \
+            --name wine-emulator-wine \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/wine-service:${{ github.sha }} \
+            --set-env-vars \
+              WINE_VERSION="${{ secrets.WINE_VERSION }}" \
+              WINEARCH="${{ secrets.WINEARCH }}" \
+              DISPLAY="${{ secrets.DISPLAY }}" \
+              BOX86_NOBANNER="${{ secrets.BOX86_NOBANNER }}" \
+              BOX64_NOBANNER="${{ secrets.BOX64_NOBANNER }}"
+
+      - name: ✅ Wine Service deployment summary
+        run: |
+          WINE_URL=$(az containerapp show \
+            --name wine-emulator-wine \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          echo "### ✅ Wine Service Deployed (ARM64)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://$WINE_URL" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ACR_LOGIN_SERVER }}/wine-service:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** \`linux/arm64\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Wine Arch:** \`${{ secrets.WINEARCH }}\` (x86 + x64 support)" >> $GITHUB_STEP_SUMMARY
+          echo "**Translation:** Box86 + Box64 enabled" >> $GITHUB_STEP_SUMMARY
+
+  deployment-summary:
+    name: Deployment Summary
+    needs: [deploy-backend, deploy-frontend, deploy-wine-service]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔐 Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 📊 Generate deployment summary
+        run: |
+          FRONTEND_URL=$(az containerapp show \
+            --name wine-emulator-frontend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          BACKEND_URL=$(az containerapp show \
+            --name wine-emulator-backend \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          WINE_URL=$(az containerapp show \
+            --name wine-emulator-wine \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          echo "## 🚀 Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🌐 Application URLs:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | URL | Platform |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-----|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🎨 Frontend | https://$FRONTEND_URL | linux/amd64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| ⚙️ Backend API | https://$BACKEND_URL | linux/amd64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🍷 Wine Service | https://$WINE_URL | linux/arm64 |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Container Images:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: \`${{ env.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: \`${{ env.ACR_LOGIN_SERVER }}/backend:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Wine Service: \`${{ env.ACR_LOGIN_SERVER }}/wine-service:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚙️ Configuration:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Wine Version: ${{ secrets.WINE_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Wine Architecture: ${{ secrets.WINEARCH }} (x86 32-bit + x64 64-bit)" >> $GITHUB_STEP_SUMMARY
+          echo "- ARM64 Translation: Box86 + Box64" >> $GITHUB_STEP_SUMMARY
+          echo "- Build: v1.0.${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: 🎉 Deployment complete
+        run: |
+          echo "✅ All services deployed successfully!"
+          echo "🌐 Frontend: https://$(az containerapp show --name wine-emulator-frontend --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query properties.configuration.ingress.fqdn -o tsv)"
