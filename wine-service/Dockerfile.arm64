@@ -57,7 +57,7 @@ ENV BOX64_NOBANNER=1
 RUN mkdir -p /root/.wine /tmp/.X11-unix /var/log/supervisor
 
 # Copy supervisor configuration
-COPY wine-service/supervisord-arm.conf /etc/supervisor/conf.d/supervisord.conf
+COPY supervisord-arm.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Create a simple web interface
 RUN echo '<!DOCTYPE html><html><head><title>Wine Emulator</title></head><body style="margin:0;padding:0;"><iframe src="/novnc/vnc.html" style="width:100%;height:100vh;border:none;"></iframe></body></html>' > /opt/novnc/index.html

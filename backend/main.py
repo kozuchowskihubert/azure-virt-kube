@@ -8,9 +8,9 @@ from typing import List, Dict, Any
 import asyncio
 import logging
 
-from .routes import emulator, applications, sessions, lowcode
-from .database import engine, Base
-from .config import settings
+from routes import emulator, applications, sessions, lowcode
+from database import engine, Base
+from config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

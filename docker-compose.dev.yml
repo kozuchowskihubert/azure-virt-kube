@@ -1,14 +1,16 @@
+# Docker Compose for Local Development
+# This simplified version focuses on backend and frontend development
+# Wine service can be added later after fixing architecture issues
+
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: wine-emulator-db
+    container_name: wine-dev-db
     environment:
       POSTGRES_DB: wine_emulator
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: changeme123
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     networks:
@@ -22,7 +24,7 @@ services:
   # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: wine-emulator-redis
+    container_name: wine-dev-redis
     ports:
       - "6379:6379"
     networks:
@@ -33,49 +35,29 @@ services:
       timeout: 3s
       retries: 5
 
-  # Wine Emulator Service
-  wine-emulator:
-    build:
-      context: ./wine-service
-      dockerfile: Dockerfile
-    container_name: wine-emulator-service
-    ports:
-      - "5900:5900"
-      - "8080:8080"
-    volumes:
-      - wine_data:/root/.wine
-    environment:
-      - DISPLAY=:0
-      - WINEARCH=win64
-    networks:
-      - wine-network
-    restart: unless-stopped
-
   # FastAPI Backend
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: wine-emulator-backend
+    container_name: wine-dev-backend
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://admin:changeme123@postgres:5432/wine_emulator
       - REDIS_URL=redis://redis:6379
-      - WINE_SERVICE_URL=http://wine-emulator:8080
+      - WINE_SERVICE_URL=http://localhost:8080
       - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
-      - SECRET_KEY=your-secret-key-change-in-production
+      - SECRET_KEY=dev-secret-key-change-in-production
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      wine-emulator:
-        condition: service_started
     networks:
       - wine-network
-    volumes:
-      - ./backend:/app
+    # Remove volumes for production-like testing
+    # For live development, run uvicorn locally outside Docker
     restart: unless-stopped
 
   # Next.js Frontend
@@ -83,8 +65,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: base
-    container_name: wine-emulator-frontend
+      # Use default target (production stage)
+    container_name: wine-dev-frontend
     ports:
       - "3000:3000"
     environment:
@@ -94,36 +76,8 @@ services:
       - backend
     networks:
       - wine-network
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    command: npm run dev
+    # Production build - for dev with hot reload, run locally
     restart: unless-stopped
-
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:alpine
-    container_name: wine-emulator-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - frontend
-      - backend
-      - wine-emulator
-    networks:
-      - wine-network
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-    driver: local
-  wine_data:
-    driver: local
 
 networks:
   wine-network:

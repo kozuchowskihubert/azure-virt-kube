@@ -60,7 +60,7 @@ ENV WINE_MONO_VERSION=7.4.0
 RUN mkdir -p /root/.wine /tmp/.X11-unix /var/log/supervisor /app
 
 # Copy supervisor configuration
-COPY wine-service/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Create simple nginx config for noVNC
 RUN echo 'server { \n\

@@ -24,12 +24,14 @@ terraform {
     }
   }
 
-  backend "azurerm" {
-    # This will use existing Azure profile
-    # Configuration can be provided via environment variables:
-    # ARM_SUBSCRIPTION_ID, ARM_TENANT_ID, ARM_CLIENT_ID, ARM_CLIENT_SECRET
-    # or via Azure CLI authentication
-  }
+  # Backend configuration - using local state for initial setup
+  # To use remote Azure backend, uncomment and configure:
+  # backend "azurerm" {
+  #   resource_group_name  = "terraform-state-rg"
+  #   storage_account_name = "tfstatewineemulator"
+  #   container_name       = "tfstate"
+  #   key                  = "wine-emulator.tfstate"
+  # }
 }
 
 provider "azurerm" {

@@ -80,9 +80,28 @@ credentials/
 # Documentation files (excluded per user request)
 *.md
 !README.md
-!GITHUB_SECRETS.md
-!SECRETS_CONFIGURED.md
+!docs/**/*.md
+!scripts/README.md
+!legacy-scripts/README.md
+
+# Hide sensitive documentation and setup files
+GITHUB_SECRETS.md
+GIT_SETUP_SUMMARY.txt
+AZURE_SETUP_SUMMARY.txt
+*_SUMMARY.txt
+*_SETUP.txt
+GIT_SETUP_SUMMARY.txt
+*SECRETS*CONFIGURED*
+*SETUP*SUMMARY*
 
 # Deployment logs
 deployment.log
 build.log
+
+# Scripts output and temporary files
+scripts/**/*.log
+scripts/**/*.tmp
+scripts/**/temp/
+
+# Legacy scripts (moved from root)
+legacy-scripts/

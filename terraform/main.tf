@@ -15,224 +15,227 @@ resource "azurerm_container_registry" "acr" {
   tags                = var.tags
 }
 
-# Create Kubernetes Namespace
-resource "kubernetes_namespace" "wine_emulator" {
-  metadata {
-    name = var.namespace
-    labels = {
-      name        = var.namespace
-      environment = var.tags["Environment"]
-    }
-  }
-}
+# NOTE: Kubernetes resources commented out - using Azure Container Apps instead
+# Uncomment these resources if deploying to AKS or k3d cluster
 
-# Create ConfigMap for Wine Configuration
-resource "kubernetes_config_map" "wine_config" {
-  metadata {
-    name      = "${var.app_name}-config"
-    namespace = kubernetes_namespace.wine_emulator.metadata[0].name
-  }
+# # Create Kubernetes Namespace
+# resource "kubernetes_namespace" "wine_emulator" {
+#   metadata {
+#     name = var.namespace
+#     labels = {
+#       name        = var.namespace
+#       environment = var.tags["Environment"]
+#     }
+#   }
+# }
 
-  data = {
-    "wine.conf" = <<-EOT
-      # Wine Configuration
-      WINEDEBUG=-all
-      WINEARCH=win64
-      DISPLAY=:0
-    EOT
-  }
-}
+# # Create ConfigMap for Wine Configuration
+# resource "kubernetes_config_map" "wine_config" {
+#   metadata {
+#     name      = "${var.app_name}-config"
+#     namespace = kubernetes_namespace.wine_emulator.metadata[0].name
+#   }
 
-# Create Persistent Volume Claim for Wine Prefix
-resource "kubernetes_persistent_volume_claim" "wine_storage" {
-  metadata {
-    name      = "${var.app_name}-storage"
-    namespace = kubernetes_namespace.wine_emulator.metadata[0].name
-  }
+#   data = {
+#     "wine.conf" = <<-EOT
+#       # Wine Configuration
+#       WINEDEBUG=-all
+#       WINEARCH=win64
+#       DISPLAY=:0
+#     EOT
+#   }
+# }
 
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = var.storage_size
-      }
-    }
-  }
-}
+# # Create Persistent Volume Claim for Wine Prefix
+# resource "kubernetes_persistent_volume_claim" "wine_storage" {
+#   metadata {
+#     name      = "${var.app_name}-storage"
+#     namespace = kubernetes_namespace.wine_emulator.metadata[0].name
+#   }
 
-# Create Deployment for Wine Emulator
-resource "kubernetes_deployment" "wine_emulator" {
-  metadata {
-    name      = var.app_name
-    namespace = kubernetes_namespace.wine_emulator.metadata[0].name
-    labels = {
-      app     = var.app_name
-      version = var.app_version
-    }
-  }
+#   spec {
+#     access_modes = ["ReadWriteOnce"]
+#     resources {
+#       requests = {
+#         storage = var.storage_size
+#       }
+#     }
+#   }
+# }
 
-  spec {
-    replicas = var.replicas
+# # Create Deployment for Wine Emulator
+# resource "kubernetes_deployment" "wine_emulator" {
+#   metadata {
+#     name      = var.app_name
+#     namespace = kubernetes_namespace.wine_emulator.metadata[0].name
+#     labels = {
+#       app     = var.app_name
+#       version = var.app_version
+#     }
+#   }
 
-    selector {
-      match_labels = {
-        app = var.app_name
-      }
-    }
+#   spec {
+#     replicas = var.replicas
 
-    template {
-      metadata {
-        labels = {
-          app     = var.app_name
-          version = var.app_version
-        }
-      }
+#     selector {
+#       match_labels = {
+#         app = var.app_name
+#       }
+#     }
 
-      spec {
-        container {
-          name  = "wine-emulator"
-          image = var.container_image
+#     template {
+#       metadata {
+#         labels = {
+#           app     = var.app_name
+#           version = var.app_version
+#         }
+#       }
 
-          port {
-            container_port = 8080
-            name           = "http"
-          }
+#       spec {
+#         container {
+#           name  = "wine-emulator"
+#           image = var.container_image
 
-          port {
-            container_port = 5900
-            name           = "vnc"
-          }
+#           port {
+#             container_port = 8080
+#             name           = "http"
+#           }
 
-          env {
-            name  = "WINEARCH"
-            value = "win64"
-          }
+#           port {
+#             container_port = 5900
+#             name           = "vnc"
+#           }
 
-          env {
-            name  = "DISPLAY"
-            value = ":0"
-          }
+#           env {
+#             name  = "WINEARCH"
+#             value = "win64"
+#           }
 
-          volume_mount {
-            name       = "wine-storage"
-            mount_path = "/root/.wine"
-          }
+#           env {
+#             name  = "DISPLAY"
+#             value = ":0"
+#           }
 
-          volume_mount {
-            name       = "config"
-            mount_path = "/etc/wine"
-          }
+#           volume_mount {
+#             name       = "wine-storage"
+#             mount_path = "/root/.wine"
+#           }
 
-          resources {
-            limits = {
-              cpu    = "2000m"
-              memory = "4Gi"
-            }
-            requests = {
-              cpu    = "500m"
-              memory = "1Gi"
-            }
-          }
+#           volume_mount {
+#             name       = "config"
+#             mount_path = "/etc/wine"
+#           }
 
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
+#           resources {
+#             limits = {
+#               cpu    = "2000m"
+#               memory = "4Gi"
+#             }
+#             requests = {
+#               cpu    = "500m"
+#               memory = "1Gi"
+#             }
+#           }
 
-          readiness_probe {
-            http_get {
-              path = "/ready"
-              port = 8080
-            }
-            initial_delay_seconds = 10
-            period_seconds        = 5
-          }
-        }
+#           liveness_probe {
+#             http_get {
+#               path = "/health"
+#               port = 8080
+#             }
+#             initial_delay_seconds = 30
+#             period_seconds        = 10
+#           }
 
-        volume {
-          name = "wine-storage"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.wine_storage.metadata[0].name
-          }
-        }
+#           readiness_probe {
+#             http_get {
+#               path = "/ready"
+#               port = 8080
+#             }
+#             initial_delay_seconds = 10
+#             period_seconds        = 5
+#           }
+#         }
 
-        volume {
-          name = "config"
-          config_map {
-            name = kubernetes_config_map.wine_config.metadata[0].name
-          }
-        }
-      }
-    }
-  }
-}
+#         volume {
+#           name = "wine-storage"
+#           persistent_volume_claim {
+#             claim_name = kubernetes_persistent_volume_claim.wine_storage.metadata[0].name
+#           }
+#         }
 
-# Create Service for Wine Emulator
-resource "kubernetes_service" "wine_emulator" {
-  metadata {
-    name      = var.app_name
-    namespace = kubernetes_namespace.wine_emulator.metadata[0].name
-    labels = {
-      app = var.app_name
-    }
-  }
+#         volume {
+#           name = "config"
+#           config_map {
+#             name = kubernetes_config_map.wine_config.metadata[0].name
+#           }
+#         }
+#       }
+#     }
+#   }
+# }
 
-  spec {
-    type = var.service_type
+# # Create Service for Wine Emulator
+# resource "kubernetes_service" "wine_emulator" {
+#   metadata {
+#     name      = var.app_name
+#     namespace = kubernetes_namespace.wine_emulator.metadata[0].name
+#     labels = {
+#       app = var.app_name
+#     }
+#   }
 
-    selector = {
-      app = var.app_name
-    }
+#   spec {
+#     type = var.service_type
 
-    port {
-      name        = "http"
-      port        = var.service_port
-      target_port = 8080
-      protocol    = "TCP"
-    }
+#     selector = {
+#       app = var.app_name
+#     }
 
-    port {
-      name        = "vnc"
-      port        = 5900
-      target_port = 5900
-      protocol    = "TCP"
-    }
-  }
-}
+#     port {
+#       name        = "http"
+#       port        = var.service_port
+#       target_port = 8080
+#       protocol    = "TCP"
+#     }
 
-# Create Ingress for Wine Emulator (optional)
-resource "kubernetes_ingress_v1" "wine_emulator" {
-  metadata {
-    name      = var.app_name
-    namespace = kubernetes_namespace.wine_emulator.metadata[0].name
-    annotations = {
-      "kubernetes.io/ingress.class" = "traefik"
-    }
-  }
+#     port {
+#       name        = "vnc"
+#       port        = 5900
+#       target_port = 5900
+#       protocol    = "TCP"
+#     }
+#   }
+# }
 
-  spec {
-    rule {
-      host = "wine-emulator.local"
+# # Create Ingress for Wine Emulator (optional)
+# resource "kubernetes_ingress_v1" "wine_emulator" {
+#   metadata {
+#     name      = var.app_name
+#     namespace = kubernetes_namespace.wine_emulator.metadata[0].name
+#     annotations = {
+#       "kubernetes.io/ingress.class" = "traefik"
+#     }
+#   }
 
-      http {
-        path {
-          path      = "/"
-          path_type = "Prefix"
+#   spec {
+#     rule {
+#       host = "wine-emulator.local"
 
-          backend {
-            service {
-              name = kubernetes_service.wine_emulator.metadata[0].name
-              port {
-                number = var.service_port
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
+#       http {
+#         path {
+#           path      = "/"
+#           path_type = "Prefix"
+
+#           backend {
+#             service {
+#               name = kubernetes_service.wine_emulator.metadata[0].name
+#               port {
+#                 number = var.service_port
+#               }
+#             }
+#           }
+#         }
+#       }
+#     }
+#   }
+# }
