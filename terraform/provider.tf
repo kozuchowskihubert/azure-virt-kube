@@ -6,6 +6,14 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 2.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
     kubernetes = {
       source  = "hashicorp/kubernetes"
       version = "~> 2.0"
@@ -27,6 +35,14 @@ terraform {
 provider "azurerm" {
   features {}
   # Uses Azure CLI authentication by default
+}
+
+provider "azuread" {
+  # Uses Azure CLI authentication by default
+}
+
+provider "random" {
+  # No configuration needed
 }
 
 provider "kubernetes" {
