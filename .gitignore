@@ -80,6 +80,7 @@ credentials/
 # Documentation files (excluded per user request)
 *.md
 !README.md
+!GITHUB_SECRETS.md
 
 # Deployment logs
 deployment.log

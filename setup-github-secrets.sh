@@ -64,8 +64,8 @@ echo -e "${YELLOW}Detecting GitHub repository...${NC}"
 # Try to detect repo from git remote
 if git remote get-url origin &> /dev/null; then
     REPO_URL=$(git remote get-url origin)
-    # Extract owner/repo from URL
-    if [[ $REPO_URL =~ github\.com[:/]([^/]+)/([^/.]+) ]]; then
+    # Extract owner/repo from URL (handles both HTTPS and SSH)
+    if [[ $REPO_URL =~ github\.com[:/]([^/]+)/([^/.]+)(\.git)?$ ]]; then
         REPO="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
     fi
 fi

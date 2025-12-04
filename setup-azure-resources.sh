@@ -274,13 +274,17 @@ echo ""
 
 echo -e "${YELLOW}[10/11] Creating Service Principal for GitHub Actions...${NC}"
 
-# Create service principal
-SP_NAME="${PROJECT_NAME}-github-sp"
+# Create service principal for GitHub Actions
+SP_NAME="${PROJECT_NAME}-github-actions"
+echo "Creating service principal for GitHub Actions..."
 SP_OUTPUT=$(az ad sp create-for-rbac \
     --name $SP_NAME \
     --role contributor \
     --scopes /subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP \
     --sdk-auth)
+
+# Note: --sdk-auth format is deprecated but still works with azure/login@v1
+# Output format: {"clientId":"xxx","clientSecret":"xxx","subscriptionId":"xxx","tenantId":"xxx"}
 
 echo -e "${GREEN}✓ Service Principal created${NC}"
 echo ""
