@@ -106,7 +106,7 @@ output "deployment_summary" {
     frontend_web       = length(azurerm_linux_web_app.frontend_web) > 0 ? "https://${azurerm_linux_web_app.frontend_web[0].default_hostname}" : null
     container_registry = azurerm_container_registry.acr.login_server
     resource_group     = azurerm_resource_group.wine_emulator.name
-    location          = azurerm_resource_group.wine_emulator.location
+    location           = azurerm_resource_group.wine_emulator.location
     app_service_plan   = length(azurerm_service_plan.app_service_plan) > 0 ? azurerm_service_plan.app_service_plan[0].name : null
   }
 }

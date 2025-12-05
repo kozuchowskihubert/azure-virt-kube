@@ -82,7 +82,7 @@ variable "aks_node_count" {
 variable "aks_node_vm_size" {
   description = "VM size for AKS nodes"
   type        = string
-  default     = "Standard_D4s_v3"  # 4 vCPU, 16 GB RAM - good for Wine gaming
+  default     = "Standard_D4s_v3" # 4 vCPU, 16 GB RAM - good for Wine gaming
 }
 
 variable "aks_min_nodes" {

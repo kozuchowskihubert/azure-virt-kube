@@ -46,7 +46,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:changeme123@postgres:5432/wine_emulator
       - REDIS_URL=redis://redis:6379
-      - WINE_SERVICE_URL=http://localhost:8080
+      - WINE_SERVICE_URL=http://wine-gaming:8080
       - SECRET_KEY=dev-secret-key-change-in-production
     depends_on:
       postgres:

@@ -199,7 +199,7 @@ resource "azurerm_container_app" "wine_service" {
 
       env {
         name  = "WINEARCH"
-        value = "win64"  # Supports both x86 (32-bit) and x64 (64-bit) Windows applications
+        value = "win64" # Supports both x86 (32-bit) and x64 (64-bit) Windows applications
       }
 
       env {
@@ -209,12 +209,12 @@ resource "azurerm_container_app" "wine_service" {
 
       env {
         name  = "BOX86_NOBANNER"
-        value = "1"  # For ARM64 systems with box86/box64 emulation
+        value = "1" # For ARM64 systems with box86/box64 emulation
       }
 
       env {
         name  = "BOX64_NOBANNER"
-        value = "1"  # For ARM64 x86_64 emulation
+        value = "1" # For ARM64 x86_64 emulation
       }
     }
 

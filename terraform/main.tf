@@ -34,18 +34,18 @@ resource "azurerm_kubernetes_cluster" "aks" {
     node_count     = var.aks_node_count
     vm_size        = var.aks_node_vm_size
     vnet_subnet_id = azurerm_subnet.aks_subnet[0].id
-    
+
     # Enable auto-scaling
     enable_auto_scaling = true
-    min_count          = var.aks_min_nodes
-    max_count          = var.aks_max_nodes
-    
+    min_count           = var.aks_min_nodes
+    max_count           = var.aks_max_nodes
+
     # Node configuration for Wine Gaming workloads
     os_disk_size_gb = 100
     os_disk_type    = "Managed"
-    
+
     node_labels = {
-      "workload" = "wine-gaming"
+      "workload"    = "wine-gaming"
       "environment" = var.environment
     }
   }
@@ -71,7 +71,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   # Auto-upgrade settings
   automatic_channel_upgrade = "patch"
-  
+
   lifecycle {
     ignore_changes = [
       kubernetes_version,
@@ -97,7 +97,7 @@ resource "azurerm_subnet" "aks_subnet" {
   resource_group_name  = azurerm_resource_group.wine_emulator.name
   virtual_network_name = azurerm_virtual_network.aks_vnet[0].name
   address_prefixes     = ["10.1.1.0/24"]
-  
+
   # Enable service endpoints for ACR integration
   service_endpoints = ["Microsoft.ContainerRegistry"]
 }
@@ -147,43 +147,43 @@ resource "azurerm_linux_web_app" "wine_gaming" {
 
   site_config {
     always_on = true
-    
+
     application_stack {
       docker_image     = var.wine_gaming_image != "" ? split(":", var.wine_gaming_image)[0] : "${azurerm_container_registry.acr.login_server}/wine-gaming"
       docker_image_tag = var.wine_gaming_image != "" ? split(":", var.wine_gaming_image)[1] : "latest"
     }
 
     app_command_line = "/app/start-wine.sh"
-    
+
     # Health check configuration
     health_check_path                 = "/health"
     health_check_eviction_time_in_min = 2
   }
 
   app_settings = {
-    DOCKER_REGISTRY_SERVER_URL      = azurerm_container_registry.acr.login_server
-    DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
-    DOCKER_REGISTRY_SERVER_PASSWORD = azurerm_container_registry.acr.admin_password
+    DOCKER_REGISTRY_SERVER_URL          = azurerm_container_registry.acr.login_server
+    DOCKER_REGISTRY_SERVER_USERNAME     = azurerm_container_registry.acr.admin_username
+    DOCKER_REGISTRY_SERVER_PASSWORD     = azurerm_container_registry.acr.admin_password
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
-    WEBSITES_PORT                   = "5900"
-    
+    WEBSITES_PORT                       = "5900"
+
     # Wine Environment
-    DISPLAY                         = ":99"
-    VNC_PASSWORD                   = "haos"
-    WINE_DEBUG                     = "-all"
-    WINEARCH                       = "win32"
-    WINEPREFIX                     = "/home/wineuser/.wine"
-    
+    DISPLAY      = ":99"
+    VNC_PASSWORD = "haos"
+    WINE_DEBUG   = "-all"
+    WINEARCH     = "win32"
+    WINEPREFIX   = "/home/wineuser/.wine"
+
     # Gaming Configuration
-    GAME_RESOLUTION                = "800x600"
-    VNC_GEOMETRY                   = "800x600"
-    ENABLE_AUDIO                   = "false"
+    GAME_RESOLUTION = "800x600"
+    VNC_GEOMETRY    = "800x600"
+    ENABLE_AUDIO    = "false"
   }
 
   logs {
     detailed_error_messages = true
     failed_request_tracing  = true
-    
+
     http_logs {
       file_system {
         retention_in_days = 7
@@ -204,7 +204,7 @@ resource "azurerm_linux_web_app" "backend_api" {
 
   site_config {
     always_on = true
-    
+
     application_stack {
       docker_image     = "${azurerm_container_registry.acr.login_server}/backend-api"
       docker_image_tag = "latest"
@@ -212,18 +212,18 @@ resource "azurerm_linux_web_app" "backend_api" {
   }
 
   app_settings = {
-    DOCKER_REGISTRY_SERVER_URL      = azurerm_container_registry.acr.login_server
-    DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
-    DOCKER_REGISTRY_SERVER_PASSWORD = azurerm_container_registry.acr.admin_password
+    DOCKER_REGISTRY_SERVER_URL          = azurerm_container_registry.acr.login_server
+    DOCKER_REGISTRY_SERVER_USERNAME     = azurerm_container_registry.acr.admin_username
+    DOCKER_REGISTRY_SERVER_PASSWORD     = azurerm_container_registry.acr.admin_password
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
-    WEBSITES_PORT                   = "8000"
-    
+    WEBSITES_PORT                       = "8000"
+
     # Backend Configuration
-    ENV                            = "production"
-    DEBUG                          = "false"
-    WINE_CONTAINER_URL             = "https://${var.app_name}.azurewebsites.net"
-    VNC_HOST                       = "${var.app_name}.azurewebsites.net"
-    VNC_PORT                       = "5900"
+    ENV                = "production"
+    DEBUG              = "false"
+    WINE_CONTAINER_URL = "https://${var.app_name}.azurewebsites.net"
+    VNC_HOST           = "${var.app_name}.azurewebsites.net"
+    VNC_PORT           = "5900"
   }
 }
 
@@ -238,7 +238,7 @@ resource "azurerm_linux_web_app" "frontend_web" {
 
   site_config {
     always_on = true
-    
+
     application_stack {
       docker_image     = "${azurerm_container_registry.acr.login_server}/frontend-web"
       docker_image_tag = "latest"
@@ -246,17 +246,17 @@ resource "azurerm_linux_web_app" "frontend_web" {
   }
 
   app_settings = {
-    DOCKER_REGISTRY_SERVER_URL      = azurerm_container_registry.acr.login_server
-    DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
-    DOCKER_REGISTRY_SERVER_PASSWORD = azurerm_container_registry.acr.admin_password
+    DOCKER_REGISTRY_SERVER_URL          = azurerm_container_registry.acr.login_server
+    DOCKER_REGISTRY_SERVER_USERNAME     = azurerm_container_registry.acr.admin_username
+    DOCKER_REGISTRY_SERVER_PASSWORD     = azurerm_container_registry.acr.admin_password
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
-    WEBSITES_PORT                   = "3000"
-    
+    WEBSITES_PORT                       = "3000"
+
     # Frontend Configuration
-    NODE_ENV                       = "production"
-    NEXT_PUBLIC_API_URL           = "https://${var.app_name}-api.azurewebsites.net"
-    NEXT_PUBLIC_VNC_URL           = "wss://${var.app_name}.azurewebsites.net/vnc"
-    NEXT_PUBLIC_WINE_URL          = "https://${var.app_name}.azurewebsites.net"
+    NODE_ENV             = "production"
+    NEXT_PUBLIC_API_URL  = "https://${var.app_name}-api.azurewebsites.net"
+    NEXT_PUBLIC_VNC_URL  = "wss://${var.app_name}.azurewebsites.net/vnc"
+    NEXT_PUBLIC_WINE_URL = "https://${var.app_name}.azurewebsites.net"
   }
 }
 
