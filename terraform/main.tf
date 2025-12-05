@@ -195,10 +195,11 @@ resource "azurerm_linux_web_app" "wine_gaming" {
 
 # Backend API App Service
 resource "azurerm_linux_web_app" "backend_api" {
+  count               = var.deployment_target == "app-service" || var.deployment_target == "both" ? 1 : 0
   name                = "${var.app_name}-api"
   resource_group_name = azurerm_resource_group.wine_emulator.name
-  location            = azurerm_service_plan.app_service_plan.location
-  service_plan_id     = azurerm_service_plan.app_service_plan.id
+  location            = azurerm_service_plan.app_service_plan[0].location
+  service_plan_id     = azurerm_service_plan.app_service_plan[0].id
   tags                = var.tags
 
   site_config {
@@ -228,10 +229,11 @@ resource "azurerm_linux_web_app" "backend_api" {
 
 # Frontend Web App Service
 resource "azurerm_linux_web_app" "frontend_web" {
+  count               = var.deployment_target == "app-service" || var.deployment_target == "both" ? 1 : 0
   name                = "${var.app_name}-web"
   resource_group_name = azurerm_resource_group.wine_emulator.name
-  location            = azurerm_service_plan.app_service_plan.location
-  service_plan_id     = azurerm_service_plan.app_service_plan.id
+  location            = azurerm_service_plan.app_service_plan[0].location
+  service_plan_id     = azurerm_service_plan.app_service_plan[0].id
   tags                = var.tags
 
   site_config {

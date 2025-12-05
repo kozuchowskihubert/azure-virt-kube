@@ -101,12 +101,12 @@ output "aks_kubelet_identity" {
 output "deployment_summary" {
   description = "Complete deployment information"
   value = {
-    wine_gaming_app    = "https://${azurerm_linux_web_app.wine_gaming.default_hostname}"
-    backend_api        = "https://${azurerm_linux_web_app.backend_api.default_hostname}"
-    frontend_web       = "https://${azurerm_linux_web_app.frontend_web.default_hostname}"
+    wine_gaming_app    = length(azurerm_linux_web_app.wine_gaming) > 0 ? "https://${azurerm_linux_web_app.wine_gaming[0].default_hostname}" : null
+    backend_api        = length(azurerm_linux_web_app.backend_api) > 0 ? "https://${azurerm_linux_web_app.backend_api[0].default_hostname}" : null
+    frontend_web       = length(azurerm_linux_web_app.frontend_web) > 0 ? "https://${azurerm_linux_web_app.frontend_web[0].default_hostname}" : null
     container_registry = azurerm_container_registry.acr.login_server
     resource_group     = azurerm_resource_group.wine_emulator.name
     location          = azurerm_resource_group.wine_emulator.location
-    app_service_plan   = azurerm_service_plan.app_service_plan.name
+    app_service_plan   = length(azurerm_service_plan.app_service_plan) > 0 ? azurerm_service_plan.app_service_plan[0].name : null
   }
 }
