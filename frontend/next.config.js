@@ -1,3 +1,5 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -21,6 +23,13 @@ const nextConfig = {
 
   webpack: (config) => {
     config.resolve.fallback = { fs: false, net: false, tls: false };
+    
+    // Ensure proper alias resolution
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, 'src'),
+    };
+    
     return config;
   },
 };
