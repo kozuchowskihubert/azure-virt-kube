@@ -101,6 +101,9 @@ jobs:
 
     - name: 📦 Install frontend dependencies
       working-directory: ./frontend
+      env:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_WINE_VNC_URL: http://localhost:5900
       run: |
         if [ -f package.json ]; then
           npm ci
@@ -262,6 +265,9 @@ jobs:
 
     - name: 📦 Install frontend dependencies
       working-directory: ./frontend
+      env:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_WINE_VNC_URL: http://localhost:5900
       run: |
         npm ci
         npm run build
