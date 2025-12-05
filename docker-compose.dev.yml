@@ -44,10 +44,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://admin:changeme123@postgres:5432/wine_emulator
+      - DATABASE_URL=postgresql+asyncpg://admin:changeme123@postgres:5432/wine_emulator
       - REDIS_URL=redis://redis:6379
       - WINE_SERVICE_URL=http://localhost:8080
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
       - SECRET_KEY=dev-secret-key-change-in-production
     depends_on:
       postgres:
@@ -71,7 +70,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_WINE_VNC_URL=http://localhost:8080
+      - NEXT_PUBLIC_WINE_VNC_URL=http://localhost:5900
     depends_on:
       - backend
     networks:
@@ -79,6 +78,42 @@ services:
     # Production build - for dev with hot reload, run locally
     restart: unless-stopped
 
+  # Wine Gaming Service (for Counter-Strike 1.6 and other games)
+  wine-gaming:
+    build:
+      context: .
+      dockerfile: Dockerfile.wine-gaming
+    container_name: wine-dev-gaming
+    ports:
+      - "5900:5900"  # VNC port
+      - "27015:27015/udp"  # CS 1.6 game port
+    environment:
+      - DISPLAY=:99
+      - WINEPREFIX=/root/.wine
+      - WINEARCH=win32
+      - WINEDEBUG=-all
+    volumes:
+      - wine-games:/app/games
+      - wine-prefix:/root/.wine
+    networks:
+      - wine-network
+    shm_size: '2gb'  # Shared memory for graphics
+    # Security options for better compatibility
+    cap_add:
+      - SYS_PTRACE
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-x", "Xvfb"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 networks:
   wine-network:
     driver: bridge
+
+volumes:
+  wine-games:
+    driver: local
+  wine-prefix:
+    driver: local

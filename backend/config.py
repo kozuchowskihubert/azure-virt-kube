@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Union
 import os
 
 class Settings(BaseSettings):
@@ -20,12 +20,17 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # CORS
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://frontend:3000",
-        "http://localhost",
-    ]
+    # CORS - use string instead of list
+    CORS_ORIGINS: str = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://frontend:3000,http://localhost"
+    )
+    
+    def get_cors_origins(self) -> List[str]:
+        """Parse CORS origins from string to list"""
+        if isinstance(self.CORS_ORIGINS, str):
+            return [origin.strip() for origin in self.CORS_ORIGINS.split(',')]
+        return self.CORS_ORIGINS
     
     # Application
     APP_NAME: str = "Wine Emulator API"

@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
 
-from ..database import get_db, LowCodeComponent
+from database import get_db, LowCodeComponent
 
 router = APIRouter()
 

@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, JSON
 from datetime import datetime
-from .config import settings
+from config import settings
 
 # Create async engine
 engine = create_async_engine(
@@ -45,7 +45,7 @@ class Session(Base):
     user_id = Column(String(100), nullable=True)
     vnc_port = Column(Integer, nullable=True)
     status = Column(String(50), default="pending")
-    metadata = Column(JSON, nullable=True)
+    session_metadata = Column(JSON, nullable=True)  # Renamed from 'metadata' to avoid SQLAlchemy reserved word
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=True)
 

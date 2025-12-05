@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 import uuid
 
-from ..database import get_db, Session
+from database import get_db, Session
 
 router = APIRouter()
 

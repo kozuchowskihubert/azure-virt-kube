@@ -5,6 +5,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchApplications, createApplication, deleteApplication } from '@/lib/api'
 import toast from 'react-hot-toast'
 
+interface Application {
+  id: string
+  name: string
+  executable_path: string
+  description?: string
+  icon_url?: string
+}
+
+interface ApplicationFormData {
+  name: string
+  executable_path: string
+  description: string
+  icon_url: string
+}
+
 export default function ApplicationList() {
   const [showForm, setShowForm] = useState(false)
   const queryClient = useQueryClient()
@@ -49,7 +64,7 @@ export default function ApplicationList() {
 
         {showForm && (
           <ApplicationForm
-            onSubmit={(data) => createMutation.mutate(data)}
+            onSubmit={(data: ApplicationFormData) => createMutation.mutate(data)}
             isLoading={createMutation.isPending}
           />
         )}
@@ -112,8 +127,13 @@ function ApplicationCard({ application, onDelete }: any) {
   )
 }
 
-function ApplicationForm({ onSubmit, isLoading }: any) {
-  const [formData, setFormData] = useState({
+interface ApplicationFormProps {
+  onSubmit: (data: ApplicationFormData) => void
+  isLoading: boolean
+}
+
+function ApplicationForm({ onSubmit, isLoading }: ApplicationFormProps) {
+  const [formData, setFormData] = useState<ApplicationFormData>({
     name: '',
     executable_path: '',
     description: '',
