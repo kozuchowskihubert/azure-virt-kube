@@ -95,6 +95,8 @@ services:
     volumes:
       - wine-games:/app/games
       - wine-prefix:/root/.wine
+      # Uncomment the next line to mount CS 1.6 files from local folder
+      # - ./cs16-files:/app/games/cs16:ro
     networks:
       - wine-network
     shm_size: '2gb'  # Shared memory for graphics
@@ -107,6 +109,23 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # noVNC Web Interface for interactive gaming
+  novnc:
+    image: theasp/novnc:latest
+    container_name: wine-dev-novnc
+    ports:
+      - "6080:8080"  # Web VNC interface
+    environment:
+      - DISPLAY_WIDTH=1280
+      - DISPLAY_HEIGHT=960
+      - VNC_SERVER=wine-gaming:5900
+      - VNC_PASSWORD=haos
+    depends_on:
+      - wine-gaming
+    networks:
+      - wine-network
+    restart: unless-stopped
 
 networks:
   wine-network:

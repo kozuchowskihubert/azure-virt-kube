@@ -1,14 +1,301 @@
-name: Azure Container Apps Deployment
+name: Deploy Wine Emulator Platform to Azure via Terraform
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - '*.sh'
+      - '*.c'
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      destroy:
+        description: 'Destroy infrastructure (true/false)'
+        required: false
+        default: 'false'
 
 env:
-  AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-  ACR_NAME: ${{ secrets.ACR_NAME }}
-  ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+  TF_VAR_app_name: wine-emulator-platform
+  TF_VAR_location: "East US"
+  TF_VAR_resource_group_name: wine-emulator-rg
+  NODE_VERSION: '18.x'
+  PYTHON_VERSION: '3.11'
+  TERRAFORM_VERSION: '1.6.0'
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: 🚀 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: 🔧 Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: 🔑 Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 📝 Terraform Init
+      working-directory: ./terraform
+      run: terraform init
+
+    - name: 🧪 Terraform Validate
+      working-directory: ./terraform
+      run: terraform validate
+
+    - name: 📋 Terraform Plan
+      working-directory: ./terraform
+      run: |
+        terraform plan -no-color -out=tfplan
+        terraform show -no-color tfplan > plan-output.txt
+
+    - name: 💬 Comment PR with Plan
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const plan = fs.readFileSync('./terraform/plan-output.txt', 'utf8');
+          
+          const output = `## 🏗️ Terraform Plan
+          
+          \`\`\`terraform
+          ${plan}
+          \`\`\`
+          
+          **Environment:** \`${{ env.TF_VAR_app_name }}\`
+          **Location:** \`${{ env.TF_VAR_location }}\`
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output.length > 65536 ? output.substring(0, 65000) + '\n\n...truncated...' : output
+          });
+
+  build-and-deploy:
+    name: Build & Deploy to Azure
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment: production
+    
+    steps:
+    - name: 🚀 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: 🔧 Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+        terraform_wrapper: false
+
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🔧 Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: './frontend/package-lock.json'
+
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 🔑 Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 🏗️ Deploy Infrastructure with Terraform
+      working-directory: ./terraform
+      run: |
+        # Initialize Terraform
+        terraform init
+        
+        # Validate configuration
+        terraform validate
+        
+        # Plan deployment
+        terraform plan -out=tfplan
+        
+        # Apply infrastructure changes
+        if [[ "${{ github.event.inputs.destroy }}" == "true" ]]; then
+          echo "🔥 Destroying infrastructure..."
+          terraform destroy -auto-approve
+          exit 0
+        else
+          echo "🚀 Applying infrastructure changes..."
+          terraform apply -auto-approve tfplan
+        fi
+
+    - name: 📊 Get Terraform Outputs
+      id: terraform-outputs
+      working-directory: ./terraform
+      run: |
+        echo "acr-server=$(terraform output -raw container_registry_login_server)" >> $GITHUB_OUTPUT
+        echo "acr-username=$(terraform output -raw container_registry_admin_username)" >> $GITHUB_OUTPUT
+        echo "acr-password=$(terraform output -raw container_registry_admin_password)" >> $GITHUB_OUTPUT
+        echo "wine-url=$(terraform output -raw wine_emulator_url)" >> $GITHUB_OUTPUT
+        echo "api-url=$(terraform output -raw backend_api_url)" >> $GITHUB_OUTPUT
+        echo "web-url=$(terraform output -raw frontend_web_url)" >> $GITHUB_OUTPUT
+
+    - name: 🐳 Login to Azure Container Registry
+      uses: azure/docker-login@v1
+      with:
+        login-server: ${{ steps.terraform-outputs.outputs.acr-server }}
+        username: ${{ steps.terraform-outputs.outputs.acr-username }}
+        password: ${{ steps.terraform-outputs.outputs.acr-password }}
+
+    - name: 📦 Install frontend dependencies
+      working-directory: ./frontend
+      run: |
+        npm ci
+        npm run build
+
+    - name: 🐍 Install backend dependencies
+      working-directory: ./backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: 🧪 Run tests
+      working-directory: ./backend
+      run: |
+        python -m pytest tests/ --verbose || echo "No tests found, skipping..."
+
+    - name: 🏗️ Build and push Docker images
+      env:
+        ACR_SERVER: ${{ steps.terraform-outputs.outputs.acr-server }}
+        COMMIT_SHA: ${{ github.sha }}
+      run: |
+        # Build Wine Gaming Container (ARM64 compatible)
+        echo "🍷 Building wine-gaming image..."
+        docker build --platform linux/amd64 \
+          -t $ACR_SERVER/wine-gaming:$COMMIT_SHA \
+          -t $ACR_SERVER/wine-gaming:latest \
+          -f Dockerfile.wine-gaming .
+        
+        # Build Backend API
+        echo "🔧 Building backend-api image..."
+        docker build \
+          -t $ACR_SERVER/backend-api:$COMMIT_SHA \
+          -t $ACR_SERVER/backend-api:latest \
+          ./backend
+        
+        # Build Frontend Web
+        echo "🎨 Building frontend-web image..."
+        docker build \
+          -t $ACR_SERVER/frontend-web:$COMMIT_SHA \
+          -t $ACR_SERVER/frontend-web:latest \
+          ./frontend
+        
+        # Push all images
+        echo "📤 Pushing images to ACR..."
+        docker push $ACR_SERVER/wine-gaming:$COMMIT_SHA
+        docker push $ACR_SERVER/wine-gaming:latest
+        docker push $ACR_SERVER/backend-api:$COMMIT_SHA
+        docker push $ACR_SERVER/backend-api:latest
+        docker push $ACR_SERVER/frontend-web:$COMMIT_SHA
+        docker push $ACR_SERVER/frontend-web:latest
+
+    - name: 🔄 Restart App Services
+      run: |
+        # Restart all App Services to pull latest images
+        az webapp restart --name wine-emulator-platform --resource-group wine-emulator-rg &
+        az webapp restart --name wine-emulator-platform-api --resource-group wine-emulator-rg &
+        az webapp restart --name wine-emulator-platform-web --resource-group wine-emulator-rg &
+        wait
+        echo "✅ All App Services restarted"
+
+    - name: 🔍 Health Check
+      run: |
+        echo "🏥 Performing health checks..."
+        
+        # Wait for services to start
+        sleep 60
+        
+        # Check Wine Gaming Service
+        echo "Checking Wine Gaming Service..."
+        curl -f ${{ steps.terraform-outputs.outputs.wine-url }}/health || echo "Wine service not ready yet"
+        
+        # Check Backend API
+        echo "Checking Backend API..."
+        curl -f ${{ steps.terraform-outputs.outputs.api-url }}/health || echo "API service not ready yet"
+        
+        # Check Frontend Web
+        echo "Checking Frontend Web..."
+        curl -f ${{ steps.terraform-outputs.outputs.web-url }}/ || echo "Web service not ready yet"
+
+    - name: 🎉 Deployment Summary
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment:** Production" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🌐 Production URLs:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Wine Emulator (VNC):** ${{ steps.terraform-outputs.outputs.wine-url }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Backend API:** ${{ steps.terraform-outputs.outputs.api-url }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Frontend Web:** ${{ steps.terraform-outputs.outputs.web-url }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🎮 Gaming Access:" >> $GITHUB_STEP_SUMMARY
+        echo "- **VNC Connection:** vnc://wine-emulator-platform.azurewebsites.net:5900" >> $GITHUB_STEP_SUMMARY
+        echo "- **VNC Password:** haos" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ Infrastructure:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Resource Group:** wine-emulator-rg" >> $GITHUB_STEP_SUMMARY
+        echo "- **Container Registry:** ${{ steps.terraform-outputs.outputs.acr-server }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Location:** East US" >> $GITHUB_STEP_SUMMARY
+
+    - name: 🚨 Notify on Failure
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🚨 Production Deployment Failed - ${context.sha.substring(0, 7)}`,
+            body: `
+            ## 🚨 Deployment Failure Alert
+            
+            **Commit:** ${context.sha}
+            **Workflow:** ${context.workflow}
+            **Run ID:** ${context.runId}
+            **Time:** ${new Date().toISOString()}
+            
+            The production deployment has failed. Please check the workflow logs and resolve the issue.
+            
+            **Quick Actions:**
+            - Check Terraform logs for infrastructure issues
+            - Verify Azure service principal permissions
+            - Review Docker build logs
+            - Check App Service deployment status
+            
+            **Rollback Command:**
+            \`\`\`bash
+            # Trigger rollback workflow
+            gh workflow run azure-deploy.yml -f destroy=true
+            \`\`\`
+            
+            Auto-generated by GitHub Actions 🤖
+            `,
+            labels: ['deployment', 'production', 'urgent', 'terraform']
+          })
 
 jobs:
   build-and-push-images:

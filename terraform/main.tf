@@ -5,14 +5,141 @@ resource "azurerm_resource_group" "wine_emulator" {
   tags     = var.tags
 }
 
-# Create Azure Container Registry (optional - for custom Wine images)
+# Create Azure Container Registry
 resource "azurerm_container_registry" "acr" {
   name                = "${replace(var.app_name, "-", "")}acr"
   resource_group_name = azurerm_resource_group.wine_emulator.name
   location            = azurerm_resource_group.wine_emulator.location
-  sku                 = "Basic"
+  sku                 = "Standard"
   admin_enabled       = true
   tags                = var.tags
+}
+
+# Create App Service Plan
+resource "azurerm_service_plan" "app_service_plan" {
+  name                = "${var.app_name}-plan"
+  resource_group_name = azurerm_resource_group.wine_emulator.name
+  location            = azurerm_resource_group.wine_emulator.location
+  os_type             = "Linux"
+  sku_name            = "P1v3"
+  tags                = var.tags
+}
+
+# Wine Gaming App Service
+resource "azurerm_linux_web_app" "wine_gaming" {
+  name                = var.app_name
+  resource_group_name = azurerm_resource_group.wine_emulator.name
+  location            = azurerm_service_plan.app_service_plan.location
+  service_plan_id     = azurerm_service_plan.app_service_plan.id
+  tags                = var.tags
+
+  site_config {
+    always_on = true
+    
+    application_stack {
+      docker_image     = "${azurerm_container_registry.acr.login_server}/wine-gaming"
+      docker_image_tag = "latest"
+    }
+
+    app_command_line = "/app/start-wine.sh"
+  }
+
+  app_settings = {
+    DOCKER_REGISTRY_SERVER_URL      = azurerm_container_registry.acr.login_server
+    DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
+    DOCKER_REGISTRY_SERVER_PASSWORD = azurerm_container_registry.acr.admin_password
+    WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
+    WEBSITES_PORT                   = "5900"
+    
+    # Wine Environment
+    DISPLAY                         = ":99"
+    VNC_PASSWORD                   = "haos"
+    WINE_DEBUG                     = "-all"
+    WINEARCH                       = "win32"
+    WINEPREFIX                     = "/home/wineuser/.wine"
+    
+    # Gaming Configuration
+    GAME_RESOLUTION                = "800x600"
+    VNC_GEOMETRY                   = "800x600"
+    ENABLE_AUDIO                   = "false"
+  }
+
+  logs {
+    detailed_error_messages = true
+    failed_request_tracing  = true
+    
+    http_logs {
+      file_system {
+        retention_in_days = 7
+        retention_in_mb   = 35
+      }
+    }
+  }
+}
+
+# Backend API App Service
+resource "azurerm_linux_web_app" "backend_api" {
+  name                = "${var.app_name}-api"
+  resource_group_name = azurerm_resource_group.wine_emulator.name
+  location            = azurerm_service_plan.app_service_plan.location
+  service_plan_id     = azurerm_service_plan.app_service_plan.id
+  tags                = var.tags
+
+  site_config {
+    always_on = true
+    
+    application_stack {
+      docker_image     = "${azurerm_container_registry.acr.login_server}/backend-api"
+      docker_image_tag = "latest"
+    }
+  }
+
+  app_settings = {
+    DOCKER_REGISTRY_SERVER_URL      = azurerm_container_registry.acr.login_server
+    DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
+    DOCKER_REGISTRY_SERVER_PASSWORD = azurerm_container_registry.acr.admin_password
+    WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
+    WEBSITES_PORT                   = "8000"
+    
+    # Backend Configuration
+    ENV                            = "production"
+    DEBUG                          = "false"
+    WINE_CONTAINER_URL             = "https://${var.app_name}.azurewebsites.net"
+    VNC_HOST                       = "${var.app_name}.azurewebsites.net"
+    VNC_PORT                       = "5900"
+  }
+}
+
+# Frontend Web App Service
+resource "azurerm_linux_web_app" "frontend_web" {
+  name                = "${var.app_name}-web"
+  resource_group_name = azurerm_resource_group.wine_emulator.name
+  location            = azurerm_service_plan.app_service_plan.location
+  service_plan_id     = azurerm_service_plan.app_service_plan.id
+  tags                = var.tags
+
+  site_config {
+    always_on = true
+    
+    application_stack {
+      docker_image     = "${azurerm_container_registry.acr.login_server}/frontend-web"
+      docker_image_tag = "latest"
+    }
+  }
+
+  app_settings = {
+    DOCKER_REGISTRY_SERVER_URL      = azurerm_container_registry.acr.login_server
+    DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
+    DOCKER_REGISTRY_SERVER_PASSWORD = azurerm_container_registry.acr.admin_password
+    WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
+    WEBSITES_PORT                   = "3000"
+    
+    # Frontend Configuration
+    NODE_ENV                       = "production"
+    NEXT_PUBLIC_API_URL           = "https://${var.app_name}-api.azurewebsites.net"
+    NEXT_PUBLIC_VNC_URL           = "wss://${var.app_name}.azurewebsites.net/vnc"
+    NEXT_PUBLIC_WINE_URL          = "https://${var.app_name}.azurewebsites.net"
+  }
 }
 
 # NOTE: Kubernetes resources commented out - using Azure Container Apps instead

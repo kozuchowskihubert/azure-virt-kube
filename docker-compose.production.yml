@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  wine-gaming:
+    build:
+      context: .
+      dockerfile: Dockerfile.wine-gaming
+      platforms:
+        - linux/amd64
+    container_name: wine-production
+    restart: unless-stopped
+    environment:
+      - DISPLAY=:99
+      - VNC_PASSWORD=haos
+      - WINE_DEBUG=-all
+      - WINEARCH=win32
+      - WINEPREFIX=/home/wineuser/.wine
+    ports:
+      - "5900:5900"  # VNC
+    volumes:
+      - wine_data:/home/wineuser/.wine
+      - game_data:/app/games
+    healthcheck:
+      test: ["CMD", "ps", "aux", "|", "grep", "x11vnc", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - wine_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend-production
+    restart: unless-stopped
+    environment:
+      - ENV=production
+      - DEBUG=false
+      - WINE_CONTAINER=wine-gaming
+      - VNC_HOST=wine-gaming
+      - VNC_PORT=5900
+    ports:
+      - "8000:8000"
+    depends_on:
+      wine-gaming:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - wine_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend-production
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://wine-emulator-platform-api.azurewebsites.net
+      - NEXT_PUBLIC_VNC_URL=wss://wine-emulator-platform.azurewebsites.net/vnc
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - wine_network
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: nginx-production
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ssl_certs:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - backend
+      - wine-gaming
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - wine_network
+
+volumes:
+  wine_data:
+    driver: local
+  game_data:
+    driver: local
+  ssl_certs:
+    driver: local
+
+networks:
+  wine_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

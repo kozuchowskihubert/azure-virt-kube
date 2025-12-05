@@ -105,3 +105,38 @@ scripts/**/temp/
 
 # Legacy scripts (moved from root)
 legacy-scripts/
+
+# Development and build scripts - hidden for production
+*.sh
+*.c
+*.exe
+*.bat
+*.o
+*.so
+build-cs16.sh
+cs16-*.sh
+cs16-*.c
+wine-*.sh
+wine-*.c
+setup-*.sh
+create-*.sh
+download-*.sh
+auto-*.sh
+launch-*.sh
+real-*.sh
+*-launcher.*
+*-setup.*
+*-integration.*
+hl-*.c
+emulator.*
+
+# Wine and gaming files
+cs16-files/
+wine-libraries/
+*.wine
+.wine/
+wine-staging/
+
+# Development containers and compose files
+docker-compose.dev.yml
+Dockerfile.*.bak
