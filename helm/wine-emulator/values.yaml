@@ -1,89 +1,250 @@
-# Default values for wine-emulator.
+# Default values for wine-emulator
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-replicaCount: 1
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
 
+# Image configuration
 image:
-  repository: scottyhardy/docker-wine
-  pullPolicy: Always
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: "latest"
+  wine:
+    registry: ""
+    repository: "wine-gaming"
+    tag: "latest"
+    pullPolicy: Always
+  backend:
+    registry: ""
+    repository: "backend-api" 
+    tag: "latest"
+    pullPolicy: Always
+  frontend:
+    registry: ""
+    repository: "frontend-web"
+    tag: "latest"
+    pullPolicy: Always
 
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
+# Deployment configuration
+replicaCount:
+  wine: 2
+  backend: 2
+  frontend: 2
 
+# Service account configuration
 serviceAccount:
-  # Specifies whether a service account should be created
   create: true
-  # Annotations to add to the service account
   annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
   name: ""
 
+# Pod configuration
 podAnnotations: {}
 
-podSecurityContext: {}
-  # fsGroup: 2000
+# Security context
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  allowPrivilegeEscalation: false
 
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 
+# Service configuration
 service:
-  type: LoadBalancer
-  port: 8080
-  vncPort: 5900
+  wine:
+    type: LoadBalancer
+    ports:
+      vnc: 5900
+      http: 8080
+    loadBalancerSourceRanges: []
+  backend:
+    type: ClusterIP
+    port: 8000
+  frontend:
+    type: LoadBalancer
+    port: 80
+    loadBalancerSourceRanges: []
 
+# Ingress configuration
 ingress:
   enabled: true
-  className: "traefik"
-  annotations: {}
-    # kubernetes.io/ingress.class: traefik
-    # kubernetes.io/tls-acme: "true"
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/websocket-services: "wine-gaming-service"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1g"
   hosts:
     - host: wine-emulator.local
       paths:
         - path: /
           pathType: Prefix
+          backend: frontend
+        - path: /api
+          pathType: Prefix
+          backend: backend
+        - path: /vnc
+          pathType: Prefix
+          backend: wine
   tls: []
-  #  - secretName: wine-emulator-tls
-  #    hosts:
-  #      - wine-emulator.local
 
+# Resource limits
 resources:
-  limits:
-    cpu: 2000m
-    memory: 4Gi
-  requests:
-    cpu: 500m
-    memory: 1Gi
+  wine:
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+  backend:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  frontend:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
 
+# Wine configuration
+wine:
+  version: "10.0"
+  architecture: "win64"
+  display: ":99"
+  
+# VNC configuration
+vnc:
+  password: "haos"
+  port: 5900
+
+# Gaming configuration
+gaming:
+  cs16:
+    enabled: true
+    mapRotation: ["de_dust2", "de_aztec", "de_inferno", "cs_office"]
+
+# Persistence
 persistence:
   enabled: true
-  storageClass: "local-path"
+  storageClass: ""
   accessMode: ReadWriteOnce
   size: 10Gi
-  # existingClaim: ""
+  wineData:
+    mountPath: /home/wineuser
+  gameData:
+    mountPath: /app/games/cs16
 
+# Node selection
+nodeSelector: 
+  beta.kubernetes.io/arch: amd64
+
+# Tolerations for ARM64 nodes
+tolerations:
+  - effect: NoSchedule
+    key: kubernetes.io/arch
+    operator: Equal
+    value: amd64
+
+# Pod anti-affinity for high availability
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - wine-gaming
+        topologyKey: kubernetes.io/hostname
+
+# Autoscaling
 autoscaling:
+  wine:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+  backend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  frontend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+# Service monitoring
+serviceMonitor:
   enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 80
-  # targetMemoryUtilizationPercentage: 80
+  namespace: ""
+  labels: {}
+  annotations: {}
+  interval: 30s
+  scrapeTimeout: 10s
 
-nodeSelector: {}
+# Environment variables
+env:
+  wine:
+    DISPLAY: ":99"
+    WINE_VERSION: "10.0"
+    WINEARCH: "win64"
+    VNC_PASSWORD: "haos"
+    BOX64_NOBANNER: "1"
+    BOX86_NOBANNER: "1"
+  backend:
+    CONTAINER_ENV: "kubernetes"
+  frontend:
+    NODE_ENV: "production"
 
-tolerations: []
+# Secrets configuration (create these externally)
+secrets:
+  name: wine-emulator-secrets
+  keys:
+    - database-url
+    - redis-url
+    - jwt-secret
 
-affinity: {}
+# Health checks
+healthCheck:
+  wine:
+    enabled: true
+    path: /health
+    port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  backend:
+    enabled: true
+    path: /health
+    port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  frontend:
+    enabled: true
+    path: /
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
 
 # Wine Configuration
 wine:

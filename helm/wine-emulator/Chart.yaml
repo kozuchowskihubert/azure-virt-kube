@@ -1,13 +1,22 @@
 apiVersion: v2
 name: wine-emulator
-description: A Helm chart for Wine x86-to-x64 translation emulator web application
+description: A Helm chart for Wine Emulator Platform with Counter-Strike 1.6 gaming support
 type: application
 version: 1.0.0
-appVersion: "8.0"
+appVersion: "10.0"
 keywords:
   - wine
+  - gaming
   - emulator
-  - x86
+  - counter-strike
+  - vnc
+  - kubernetes
+home: https://github.com/kozuchowskihubert/azure-virt-kube
+sources:
+  - https://github.com/kozuchowskihubert/azure-virt-kube
+maintainers:
+  - name: haos
+    email: hubert.kozuchowski@gmail.com
   - x64
   - translation
 maintainers:

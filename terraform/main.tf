@@ -15,8 +15,119 @@ resource "azurerm_container_registry" "acr" {
   tags                = var.tags
 }
 
-# Create App Service Plan
+# ===============================================
+# KUBERNETES INFRASTRUCTURE (AKS)
+# ===============================================
+
+# Create Azure Kubernetes Service (AKS) cluster
+resource "azurerm_kubernetes_cluster" "aks" {
+  count               = var.deployment_target == "kubernetes" || var.deployment_target == "both" ? 1 : 0
+  name                = "${var.app_name}-aks"
+  location            = azurerm_resource_group.wine_emulator.location
+  resource_group_name = azurerm_resource_group.wine_emulator.name
+  dns_prefix          = "${var.app_name}-aks"
+  kubernetes_version  = var.kubernetes_version
+  tags                = var.tags
+
+  default_node_pool {
+    name           = "default"
+    node_count     = var.aks_node_count
+    vm_size        = var.aks_node_vm_size
+    vnet_subnet_id = azurerm_subnet.aks_subnet[0].id
+    
+    # Enable auto-scaling
+    enable_auto_scaling = true
+    min_count          = var.aks_min_nodes
+    max_count          = var.aks_max_nodes
+    
+    # Node configuration for Wine Gaming workloads
+    os_disk_size_gb = 100
+    os_disk_type    = "Managed"
+    
+    node_labels = {
+      "workload" = "wine-gaming"
+      "environment" = var.environment
+    }
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  network_profile {
+    network_plugin     = "azure"
+    network_policy     = "azure"
+    dns_service_ip     = "10.2.0.10"
+    docker_bridge_cidr = "172.17.0.1/16"
+    service_cidr       = "10.2.0.0/24"
+  }
+
+  role_based_access_control_enabled = true
+
+  # Enable monitoring
+  oms_agent {
+    log_analytics_workspace_id = azurerm_log_analytics_workspace.aks_logs[0].id
+  }
+
+  # Auto-upgrade settings
+  automatic_channel_upgrade = "patch"
+  
+  lifecycle {
+    ignore_changes = [
+      kubernetes_version,
+      default_node_pool[0].node_count
+    ]
+  }
+}
+
+# Create Virtual Network for AKS
+resource "azurerm_virtual_network" "aks_vnet" {
+  count               = var.deployment_target == "kubernetes" || var.deployment_target == "both" ? 1 : 0
+  name                = "${var.app_name}-aks-vnet"
+  location            = azurerm_resource_group.wine_emulator.location
+  resource_group_name = azurerm_resource_group.wine_emulator.name
+  address_space       = ["10.1.0.0/16"]
+  tags                = var.tags
+}
+
+# Create subnet for AKS nodes
+resource "azurerm_subnet" "aks_subnet" {
+  count                = var.deployment_target == "kubernetes" || var.deployment_target == "both" ? 1 : 0
+  name                 = "${var.app_name}-aks-subnet"
+  resource_group_name  = azurerm_resource_group.wine_emulator.name
+  virtual_network_name = azurerm_virtual_network.aks_vnet[0].name
+  address_prefixes     = ["10.1.1.0/24"]
+  
+  # Enable service endpoints for ACR integration
+  service_endpoints = ["Microsoft.ContainerRegistry"]
+}
+
+# Create Log Analytics workspace for AKS monitoring
+resource "azurerm_log_analytics_workspace" "aks_logs" {
+  count               = var.deployment_target == "kubernetes" || var.deployment_target == "both" ? 1 : 0
+  name                = "${var.app_name}-aks-logs"
+  location            = azurerm_resource_group.wine_emulator.location
+  resource_group_name = azurerm_resource_group.wine_emulator.name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+  tags                = var.tags
+}
+
+# Grant AKS access to ACR
+resource "azurerm_role_assignment" "aks_acr" {
+  count                = var.deployment_target == "kubernetes" || var.deployment_target == "both" ? 1 : 0
+  principal_id         = azurerm_kubernetes_cluster.aks[0].kubelet_identity[0].object_id
+  role_definition_name = "AcrPull"
+  scope                = azurerm_container_registry.acr.id
+}
+
+# ===============================================
+# APP SERVICE INFRASTRUCTURE
+# ===============================================
+
+# Create App Service Plan (only if deploying to App Service)
 resource "azurerm_service_plan" "app_service_plan" {
+  count               = var.deployment_target == "app-service" || var.deployment_target == "both" ? 1 : 0
   name                = "${var.app_name}-plan"
   resource_group_name = azurerm_resource_group.wine_emulator.name
   location            = azurerm_resource_group.wine_emulator.location
@@ -27,21 +138,26 @@ resource "azurerm_service_plan" "app_service_plan" {
 
 # Wine Gaming App Service
 resource "azurerm_linux_web_app" "wine_gaming" {
+  count               = var.deployment_target == "app-service" || var.deployment_target == "both" ? 1 : 0
   name                = var.app_name
   resource_group_name = azurerm_resource_group.wine_emulator.name
-  location            = azurerm_service_plan.app_service_plan.location
-  service_plan_id     = azurerm_service_plan.app_service_plan.id
+  location            = azurerm_service_plan.app_service_plan[0].location
+  service_plan_id     = azurerm_service_plan.app_service_plan[0].id
   tags                = var.tags
 
   site_config {
     always_on = true
     
     application_stack {
-      docker_image     = "${azurerm_container_registry.acr.login_server}/wine-gaming"
-      docker_image_tag = "latest"
+      docker_image     = var.wine_gaming_image != "" ? split(":", var.wine_gaming_image)[0] : "${azurerm_container_registry.acr.login_server}/wine-gaming"
+      docker_image_tag = var.wine_gaming_image != "" ? split(":", var.wine_gaming_image)[1] : "latest"
     }
 
     app_command_line = "/app/start-wine.sh"
+    
+    # Health check configuration
+    health_check_path                 = "/health"
+    health_check_eviction_time_in_min = 2
   }
 
   app_settings = {

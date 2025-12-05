@@ -1,0 +1,246 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wine-gaming-deployment
+  namespace: wine-emulator
+  labels:
+    app: wine-gaming
+    component: wine-emulator
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: wine-gaming
+  template:
+    metadata:
+      labels:
+        app: wine-gaming
+        component: wine-emulator
+        version: v1
+    spec:
+      imagePullSecrets:
+      - name: acr-secret
+      containers:
+      - name: wine-gaming
+        image: IMAGE_PLACEHOLDER_WINE
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5900
+          name: vnc
+          protocol: TCP
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: DISPLAY
+          value: ":99"
+        - name: WINE_VERSION
+          value: "10.0"
+        - name: WINEARCH
+          value: "win64"
+        - name: VNC_PASSWORD
+          value: "haos"
+        - name: BOX64_NOBANNER
+          value: "1"
+        - name: BOX86_NOBANNER
+          value: "1"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        volumeMounts:
+        - name: wine-data
+          mountPath: /home/wineuser
+        - name: cs16-game-data
+          mountPath: /app/games/cs16
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+      volumes:
+      - name: wine-data
+        emptyDir: {}
+      - name: cs16-game-data
+        emptyDir: {}
+      nodeSelector:
+        beta.kubernetes.io/arch: amd64
+      tolerations:
+      - effect: NoSchedule
+        key: kubernetes.io/arch
+        operator: Equal
+        value: amd64
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api-deployment
+  namespace: wine-emulator
+  labels:
+    app: backend-api
+    component: wine-emulator
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: backend-api
+  template:
+    metadata:
+      labels:
+        app: backend-api
+        component: wine-emulator
+        version: v1
+    spec:
+      imagePullSecrets:
+      - name: acr-secret
+      containers:
+      - name: backend-api
+        image: IMAGE_PLACEHOLDER_BACKEND
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: CONTAINER_ENV
+          value: "kubernetes"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: wine-emulator-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: wine-emulator-secrets
+              key: redis-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: wine-emulator-secrets
+              key: jwt-secret
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-web-deployment
+  namespace: wine-emulator
+  labels:
+    app: frontend-web
+    component: wine-emulator
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: frontend-web
+  template:
+    metadata:
+      labels:
+        app: frontend-web
+        component: wine-emulator
+        version: v1
+    spec:
+      imagePullSecrets:
+      - name: acr-secret
+      containers:
+      - name: frontend-web
+        image: IMAGE_PLACEHOLDER_FRONTEND
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://backend-api-service:8000"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true

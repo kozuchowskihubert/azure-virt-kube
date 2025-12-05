@@ -1,0 +1,139 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wine-emulator-ingress
+  namespace: wine-emulator
+  labels:
+    app: wine-emulator
+    component: wine-emulator
+  annotations:
+    kubernetes.io/ingress.class: "azure/application-gateway"
+    appgw.ingress.kubernetes.io/backend-protocol: "http"
+    appgw.ingress.kubernetes.io/connection-draining: "true"
+    appgw.ingress.kubernetes.io/connection-draining-timeout: "30"
+    appgw.ingress.kubernetes.io/cookie-based-affinity: "true"
+    appgw.ingress.kubernetes.io/request-timeout: "300"
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
+    # Rate limiting for gaming traffic
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    # CORS configuration for web frontend
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type, Authorization"
+    # WebSocket support for VNC connections
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "wine-gaming-service"
+    # Large body size for game file uploads
+    nginx.ingress.kubernetes.io/proxy-body-size: "1g"
+spec:
+  rules:
+  - host: wine-emulator.haos.fm
+    http:
+      paths:
+      # Frontend web application
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-web-service
+            port:
+              number: 80
+      # Backend API routes
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-api-service
+            port:
+              number: 8000
+      # Wine gaming VNC interface
+      - path: /vnc
+        pathType: Prefix
+        backend:
+          service:
+            name: wine-gaming-service
+            port:
+              number: 8080
+      # Direct VNC access (WebSocket)
+      - path: /websockify
+        pathType: Prefix
+        backend:
+          service:
+            name: wine-gaming-service
+            port:
+              number: 8080
+  # Gaming-specific subdomain
+  - host: gaming.wine-emulator.haos.fm
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wine-gaming-service
+            port:
+              number: 8080
+  # API-specific subdomain
+  - host: api.wine-emulator.haos.fm
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-api-service
+            port:
+              number: 8000
+  tls:
+  - hosts:
+    - wine-emulator.haos.fm
+    - gaming.wine-emulator.haos.fm
+    - api.wine-emulator.haos.fm
+    secretName: wine-emulator-tls
+
+---
+# Alternative ingress for local development
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wine-emulator-local-ingress
+  namespace: wine-emulator
+  labels:
+    app: wine-emulator
+    component: wine-emulator
+    environment: local
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/websocket-services: "wine-gaming-service"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  rules:
+  - host: localhost
+    http:
+      paths:
+      - path: /wine
+        pathType: Prefix
+        backend:
+          service:
+            name: wine-gaming-service
+            port:
+              number: 8080
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-api-service
+            port:
+              number: 8000
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-web-service
+            port:
+              number: 80
